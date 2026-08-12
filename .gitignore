@@ -39,3 +39,5 @@ planner_reports/
 aic-core/src/aiconfigurator_core/*.so
 aic-core/src/aiconfigurator_core/*.pyd
 .idea
+
+.idea
