@@ -14,6 +14,18 @@ from .aggregators import collect_generator_params
 from .rendering import apply_defaults
 
 
+def _msa_sparse_implementation(task_config) -> str | None:
+    """Optimized-path wrapper over utils.msa_sparse_implementation (the
+    single decision point shared with the naive generator entry point)."""
+    from .utils import msa_sparse_implementation
+
+    return msa_sparse_implementation(
+        getattr(task_config, "primary_backend_name", None) or "",
+        task_config.primary_model_path,
+        task_config.primary_system_name,
+    )
+
+
 def _deep_merge(target: dict, extra: dict | None) -> dict:
     """
     Recursively merge the contents of the 'extra' dictionary into 'target',
@@ -112,6 +124,7 @@ def task_config_to_generator_config(
         and (_num_images is None or _num_images > 0)
     ):
         encoder_dp = bool(getattr(task_config, "enable_encoder_dp", True))
+    attention_backend = getattr(task_config, "attention_backend", None)
 
     def _build_worker_params(prefix: str, extra_overrides: dict | None) -> tuple[dict, int]:
         workers = _safe_int(_series_val(result_df, f"{prefix}workers", 1), 1)
@@ -148,8 +161,18 @@ def task_config_to_generator_config(
             worker_payload["kv_cache_dtype"] = quant["kvcache_quant_mode"]
         if encoder_dp is not None:
             worker_payload["enable_encoder_dp"] = encoder_dp
+        if attention_backend is not None:
+            worker_payload["attention_backend"] = attention_backend
 
         worker_payload = _deep_merge(worker_payload, extra_overrides)
+        effective_attention_backend = worker_payload.get("attention_backend")
+        if effective_attention_backend == "default":
+            worker_payload.pop("attention_backend")
+        elif task_config.primary_backend_name == "sglang" and effective_attention_backend == "fla":
+            raise ValueError(
+                f"SGLang {task_config.primary_backend_version} rejects attention_backend='fla'; "
+                "use 'default' to let SGLang choose its attention backend or select a supported named backend."
+            )
         return worker_payload, max(workers, 1)
 
     backend_name = task_config.primary_backend_name
@@ -183,6 +206,7 @@ def task_config_to_generator_config(
         "is_moe": task_config.is_moe,
         "nextn": task_config.nextn,
         "nextn_accepted": task_config.nextn_accepted if task_config.nextn else None,
+        "msa_sparse_implementation": _msa_sparse_implementation(task_config),
     }
     model_cfg = {k: v for k, v in model_cfg.items() if v is not None}
     model_cfg = _deep_merge(model_cfg, overrides.get("ModelConfig"))

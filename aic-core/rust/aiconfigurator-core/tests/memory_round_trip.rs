@@ -18,7 +18,7 @@
 //! `tolerance_adjusted`). This test restores that coverage: a typo in a forwarded
 //! kwarg name or a parsed dict key fails here instead of first surfacing in the
 //! deferred downstream Mocker PR. It mirrors `embedded_round_trip.rs`, the sibling
-//! `build_aic_engine` round-trip.
+//! `AicEngineBuilder` round-trip.
 //!
 //! ## Run requirements
 //!
@@ -104,6 +104,7 @@ fn request(tolerance_fraction: Option<f64>) -> KvCacheEstimateRequest {
             speculative: None,
             enable_shared_layer: None,
             strict_provenance: false,
+            tolerate_dirless_version: false,
             database_mode: Default::default(),
             transfer_policy: None,
             extra: BTreeMap::new(),

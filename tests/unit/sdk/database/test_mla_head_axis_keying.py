@@ -22,12 +22,15 @@ import pytest
 from aiconfigurator_core.sdk.errors import PerfDataNotAvailableError
 from aiconfigurator_core.sdk.perf_database import PerfDatabase
 
+pytestmark = pytest.mark.unit
+
 # Test-held copy of the model pin (single source: the Rust
 # ``perf_database/table_view.rs::MLA_MODULE_NATIVE_HEADS``).
 _MLA_MODULE_NATIVE_HEADS = {
     "deepseek-ai/DeepSeek-V3": 128,
     "deepseek-ai/DeepSeek-R1": 128,
     "nvidia/DeepSeek-V3.1-NVFP4": 128,
+    "moonshotai/Kimi-K3": 96,
 }
 
 _DSV3 = "deepseek-ai/DeepSeek-V3"
@@ -396,3 +399,45 @@ def test_shipped_dsa_module_tables_keep_one_native_per_architecture():
                         f"{path.relative_to(_data_root())}: architecture {arch} mixes natives {sorted(natives)}"
                     )
     assert not offenders, "DSA one-native-per-architecture pin violated:\n" + "\n".join(offenders)
+
+
+_MSA_MODEL_NATIVE_HEADS = {
+    "MiniMaxAI/MiniMax-M3": 64,
+}
+
+
+def test_shipped_msa_module_tables_keep_one_native_per_architecture():
+    """MSA twin of the DSA guardrail above: the MSA module tables reuse the
+    DSA-module schema and `[architecture][local]` keying, so the same
+    one-native-per-architecture invariant must hold for shipped rows."""
+    pq = pytest.importorskip("pyarrow.parquet")
+    files = sorted(_data_root().rglob("msa_*_module_perf.parquet"))
+    assert files, f"no shipped MSA module tables found under {_data_root()}"
+
+    offenders = []
+    for path in files:
+        table = pq.read_table(path, columns=["model", "architecture", "num_heads", "tp_size"])
+        natives_by_arch: dict[str, set[int]] = {}
+        for model, arch, heads, tp in zip(
+            table["model"].to_pylist(),
+            table["architecture"].to_pylist(),
+            table["num_heads"].to_pylist(),
+            table["tp_size"].to_pylist(),
+            strict=True,
+        ):
+            native = _MSA_MODEL_NATIVE_HEADS.get(str(model))
+            if native is None:
+                offenders.append(f"{path.relative_to(_data_root())}: unpinned model {model!r}")
+                break
+            natives_by_arch.setdefault(str(arch), set()).add(native)
+            tp = max(1, int(tp))
+            if tp > 1 and int(heads) * tp != native:
+                offenders.append(f"{path.relative_to(_data_root())}: {model} heads={heads} tp={tp} vs native {native}")
+                break
+        else:
+            for arch, natives in natives_by_arch.items():
+                if len(natives) > 1:
+                    offenders.append(
+                        f"{path.relative_to(_data_root())}: architecture {arch} mixes natives {sorted(natives)}"
+                    )
+    assert not offenders, "MSA one-native-per-architecture pin violated:\n" + "\n".join(offenders)
