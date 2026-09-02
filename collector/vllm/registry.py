@@ -70,14 +70,14 @@ REGISTRY: list[OpEntry] = [
     ),
     OpEntry(
         op="mla_context_module",
-        module="collector.vllm.collect_mla_module",
+        module="collector.vllm.collect_mla_module_027",
         get_func="get_mla_context_module_test_cases",
         run_func="run_mla_module_worker",
         perf_filename=PerfFile.MLA_CONTEXT_MODULE,
     ),
     OpEntry(
         op="mla_generation_module",
-        module="collector.vllm.collect_mla_module",
+        module="collector.vllm.collect_mla_module_027",
         get_func="get_mla_generation_module_test_cases",
         run_func="run_mla_module_worker",
         perf_filename=PerfFile.MLA_GENERATION_MODULE,
@@ -95,6 +95,30 @@ REGISTRY: list[OpEntry] = [
         get_func="get_dsa_generation_module_test_cases",
         run_func="run_mla_module_worker",
         perf_filename=PerfFile.DSA_GENERATION_MODULE,
+    ),
+    OpEntry(
+        op="msa_context_module",
+        module="collector.vllm.collect_msa_module",
+        get_func="get_msa_context_module_test_cases",
+        run_func="run_msa_module_worker",
+        perf_filename=PerfFile.MSA_CONTEXT_MODULE,
+        # MiniMax-M3 MSA hardware-validated on SM90 (h100/h200, Triton
+        # impls), SM100/103 (b200/b300/gb200/gb300 — vLLM's own dispatch
+        # switches the attend + indexer to the fmha_sm100 "MSA" impls via
+        # select_main_impl_cls / select_indexer_impl_cls @0.24.0), SM89
+        # (l40s) and SM120 (Triton impls; fp8_block gemm cases fail
+        # classified on SM120 via DeepGEMM's SM120 assert). SM121 has never
+        # run on hardware and stays marked.
+        unverified_sms=(121,),
+    ),
+    OpEntry(
+        op="msa_generation_module",
+        module="collector.vllm.collect_msa_module",
+        get_func="get_msa_generation_module_test_cases",
+        run_func="run_msa_module_worker",
+        perf_filename=PerfFile.MSA_GENERATION_MODULE,
+        # See msa_context_module above.
+        unverified_sms=(121,),
     ),
     OpEntry(
         op="dsv4_csa_context_module",

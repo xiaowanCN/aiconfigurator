@@ -1,7 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import atexit
 import os
+import shutil
 import tempfile
 from collections import defaultdict
 from unittest.mock import patch
@@ -48,6 +50,8 @@ _FETCH_VIEW_TARGET = "aiconfigurator_core.sdk.engine_table_view.fetch_table_view
 
 def _fake_fetch_table_view(overrides: dict[str, object]):
     def _fetch(database, attribute):
+        if _COMPREHENSIVE_OVERRIDES is not None and getattr(database, "system", None) == "test_system":
+            return _COMPREHENSIVE_OVERRIDES.get(attribute)
         return overrides.get(attribute)
 
     return _fetch
@@ -352,9 +356,12 @@ def _build_comprehensive_test_data():
     return {
         "system_spec": dummy_system_spec,
         "gemm_data": dummy_gemm_data,
-        "context_attention_data": dummy_context_attention_data,
+        # Both attention loaders key on kernel_source first (AIC-1715); rows
+        # without one land in lane "default", which is what these fixtures
+        # impersonate.
+        "context_attention_data": {"default": dummy_context_attention_data},
         "encoder_attention_data": dummy_encoder_attention_data,
-        "generation_attention_data": dummy_generation_attention_data,
+        "generation_attention_data": {"default": dummy_generation_attention_data},
         "moe_data": dummy_moe_data,
         "context_mla_data": dummy_context_mla_data,
         "generation_mla_data": dummy_generation_mla_data,
@@ -369,16 +376,48 @@ def _build_comprehensive_test_data():
 _comprehensive_db_singleton: PerfDatabase | None = None
 
 
+# Generation of ``engine._PROBE_CACHE_GENERATION`` the singleton was built
+# under. Recorded explicitly at build time: this database never reaches the
+# real ``fetch_table_view`` (the module router answers its fetches from
+# ``_COMPREHENSIVE_OVERRIDES``), so the engine-side probe-spec memo a
+# database normally carries is never written for it and cannot be used as
+# the eviction signal.
+_comprehensive_db_generation: int | None = None
+
+
 def _get_comprehensive_db_singleton() -> PerfDatabase:
-    """Build and cache a fully-initialized PerfDatabase singleton."""
-    global _comprehensive_db_singleton
-    if _comprehensive_db_singleton is not None:
+    """Build (or rebuild after an eviction lever fired) the shared singleton.
+
+    ``clear_all_op_caches()`` and the other documented eviction levers wipe
+    the per-op class caches and advance ``engine._PROBE_CACHE_GENERATION``.
+    Tests that fire a lever while a scoped stub fetch is active (e.g. the
+    router-survival test in ``test_data_loaders.py``) leave the shared class
+    caches re-populated from the stub under this singleton's cache key, so
+    whichever test on the xdist worker touches the singleton next reads
+    stub-shaped tables and fails order-dependently (AIC-1777:
+    TestSupportedQuantModes / TestUpdateSupportMatrix). Rebuilding whenever
+    the generation moved since the build cures that: the rebuild happens at
+    the NEXT fixture request, which in those orders is outside the stub
+    window, and steady-state accesses (no lever fired) keep the documented
+    same-object singleton contract.
+    """
+    global _comprehensive_db_singleton, _comprehensive_db_generation
+    from aiconfigurator_core.sdk import engine as _engine
+
+    if _comprehensive_db_singleton is not None and _comprehensive_db_generation == _engine._PROBE_CACHE_GENERATION:
         return _comprehensive_db_singleton
+    _comprehensive_db_singleton = None
 
     cached = _build_comprehensive_test_data()
     system_spec = cached["system_spec"]
 
     tmp_dir = tempfile.mkdtemp()
+    # Superseded singleton dirs must survive until process exit: deepcopied
+    # databases (mutable_comprehensive_perf_db) keep referencing the old
+    # systems path, and a post-eviction engine re-fetch through such a copy
+    # would turn "empty tables" into a missing-directory error if the dir
+    # were removed eagerly on rebuild. Clean them all up at exit instead.
+    atexit.register(shutil.rmtree, tmp_dir, ignore_errors=True)
     yaml_file = os.path.join(tmp_dir, "test_system.yaml")
     with open(yaml_file, "w") as f:
         yaml.dump(system_spec, f)
@@ -417,6 +456,7 @@ def _get_comprehensive_db_singleton() -> PerfDatabase:
     try:
         _comprehensive_db_singleton = PerfDatabase("test_system", "trtllm", "v1", tmp_dir)
         _warm_lazy_op_caches(_comprehensive_db_singleton)
+        _comprehensive_db_generation = _engine._PROBE_CACHE_GENERATION
     finally:
         yaml_patch.stop()
 
