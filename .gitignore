@@ -41,3 +41,5 @@ aic-core/src/aiconfigurator_core/*.pyd
 .idea
 
 .idea
+docker/mat/
+tmp_img_collector/

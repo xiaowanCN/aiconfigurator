@@ -6,7 +6,12 @@
       "Bash(git checkout:*)",
       "Bash(python3:*)",
       "Bash(python -m py_compile collector/registry_types.py)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(dir:*)",
+      "Bash(tar:*)",
+      "Bash(docker load:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)"
     ]
   }
 }
