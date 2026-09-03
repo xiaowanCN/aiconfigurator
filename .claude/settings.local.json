@@ -11,7 +11,8 @@
       "Bash(tar:*)",
       "Bash(docker load:*)",
       "Bash(ls:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(docker:*)"
     ]
   }
 }

@@ -19,9 +19,9 @@ gpu:
 node:
   num_gpus_per_node: 8
   inter_node_bw: 100000000000  # Byte/s per GPU, single direction, 1:1 CX8 XDR 800Gb/s per node
-  intra_node_bw: 3000000000000  # 原来90、现在改为300；Byte/s per gpu, single direction (1.8 TB/s NVLink bidir / 2)
+  intra_node_bw: 900000000000  # Byte/s per gpu, single direction (1.8 TB/s NVLink bidir / 2)
   pcie_bw: 128000000000  # Byte/s, single direction, PCIe Gen6 (256 GB/s bidir / 2)
-  p2p_latency: 0.00005  # 原来1、现在改为5；10us some nonofficial correction based on observations, you should try to modify based on your own observations
+  p2p_latency: 0.00001  # 10us some nonofficial correction based on observations, you should try to modify based on your own observations
 
 misc:
   nccl_mem: # some nonofficial correction based on observations, you should try to modify based on your own observations

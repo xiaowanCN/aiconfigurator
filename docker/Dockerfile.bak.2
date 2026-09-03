@@ -193,9 +193,9 @@ COPY collector/ /workspace/collector/
 # directly from source within the container.
 FROM base AS runtime-with-source
 
-# Install git and curl for development workflows
+# Install git, curl and build tools for development workflows
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends git curl && \
+    apt-get install -y --no-install-recommends git curl build-essential && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the complete project source code
@@ -223,6 +223,10 @@ RUN curl --proto '=https' --tlsv1.2 -sSf --retry 5 --retry-connrefused --retry-d
 
 # Configure maturin for sparse protocol
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL="sparse"
+
+# Set compiler paths for Rust builds
+ENV CC=gcc \
+    CXX=g++
 
 # Install the project in development mode (editable install)
 # This builds the Rust extension and installs both aiconfigurator-core and aiconfigurator
