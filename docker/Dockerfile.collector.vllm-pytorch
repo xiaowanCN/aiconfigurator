@@ -1,0 +1,52 @@
+
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# ============================================================================
+# Collector Dockerfile for GPU Performance Data Collection
+# ============================================================================
+# This Dockerfile builds a single image containing both PyTorch and vLLM
+# for collecting performance data on target GPUs.
+#
+# Base: nvcr.io/nvidia/pytorch:25.01-py3
+# vLLM: v0.14.0
+#
+# Usage:
+#   # Build image
+#   docker build -f docker/Dockerfile.collector.vllm-pytorch -t aic-vllm-14-nccl:v0907 .
+#
+#   # Run collector
+#   docker run -it --gpus all --ipc=host --network=host \
+#     aic-vllm-14-nccl:v0907 python3 collect.py --backend vllm --gpu b300_sxm
+
+# ============================================================================
+# PyTorch + vLLM Collector
+# ============================================================================
+FROM nvcr.io/nvidia/pytorch:25.01-py3
+
+WORKDIR /workspace
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install vLLM v0.14.0
+RUN pip install --no-cache-dir vllm==0.14.0
+
+# Install uv for Python package management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy collector source code
+COPY collector/ /workspace/collector/
+
+# Copy system definitions
+COPY aic-core/src/aiconfigurator_core/systems/*.yaml /workspace/aic-core/src/aiconfigurator_core/systems/
+COPY aic-core/src/aiconfigurator_core/systems/data/ /workspace/aic-core/src/aiconfigurator_core/systems/data/
+
+# Set environment variables
+ENV COLLECTOR_LOG_DIR=/workspace/collector/logs
+
+WORKDIR /workspace/collector
+
+CMD ["/bin/bash"]
