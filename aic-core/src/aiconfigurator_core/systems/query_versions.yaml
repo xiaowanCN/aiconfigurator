@@ -31,6 +31,8 @@ overrides:
     trtllm: {current: "1.0.0", previous: null}
     sglang: {current: "0.5.10", previous: null}
     vllm: {current: "0.14.0", previous: null}
+  a800_sxm:
+    vllm: {current: "0.14.0", previous: null}
   b60:
     # 2026-08-26: main #1441 landed a complete b60/vLLM 0.26.0 collection
     # (attention/gemm/moe/comm), so the frozen 0.20.0 baseline moves to
