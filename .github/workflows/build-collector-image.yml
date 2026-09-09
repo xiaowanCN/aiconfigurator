@@ -24,7 +24,7 @@ concurrency:
 
 env:
   REGISTRY: quay.io
-  IMAGE_NAME: ai-dynamo/aiconfigurator-collector
+  IMAGE_NAME: caigentle/aiconfigurator-collector
 
 jobs:
   build-and-push:
