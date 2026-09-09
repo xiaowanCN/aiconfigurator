@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# ============================================================================
+# CI Version: Collector + vLLM Deployment
+# ============================================================================
+# This is the CI-optimized version that uses official PyPI and GitHub sources
+# instead of China mirrors, since GitHub Actions runners are outside China.
+#
+# Usage:
+#   docker build -f docker/Dockerfile.vllm-collector-deploy.ci -t aic-vllm-all:v1 .
+#
+# ============================================================================
+
+# ============================================================================
+# Stage 1: Base with CUDA + PyTorch
+# ============================================================================
+FROM nvcr.io/nvidia/cuda-dl-base:25.01-cuda12.8-devel-ubuntu24.04 AS base
+
+WORKDIR /workspace
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        git \
+        curl \
+        wget \
+        pciutils \
+        && \
+    rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# Stage 2: Install Python + vLLM + API dependencies
+# ============================================================================
+FROM base AS vllm-env
+
+# Install Python
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        python3-venv \
+        && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment
+RUN python3 -m venv /opt/venv
+
+# Add venv to PATH
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install vLLM and deployment dependencies
+RUN pip install --no-cache-dir \
+    vllm==0.14.0 \
+    fastapi>=0.100.0 \
+    uvicorn[standard]>=0.23.0 \
+    pydantic>=2.0.0 \
+    prometheus-client \
+    ray[default] \
+    sentencepiece \
+    transformers \
+    accelerate
+
+# ============================================================================
+# Stage 3: Final image with collector + deployment
+# ============================================================================
+FROM vllm-env AS final
+
+# Install uv for Python package management (useful for collector)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy collector source code
+COPY collector/ /workspace/collector/
+
+# Copy system definitions
+COPY aic-core/src/aiconfigurator_core/systems/*.yaml /workspace/aic-core/src/aiconfigurator_core/systems/
+COPY aic-core/src/aiconfigurator_core/systems/data/ /workspace/aic-core/src/aiconfigurator_core/systems/data/
+
+# Set environment variables
+ENV COLLECTOR_LOG_DIR=/workspace/collector/logs
+ENV PYTHONUNBUFFERED=1
+
+# Create directories for models and logs
+RUN mkdir -p /workspace/models /workspace/logs
+
+# Health check for API server
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+WORKDIR /workspace
+
+CMD ["/bin/bash"]
