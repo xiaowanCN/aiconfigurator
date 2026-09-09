@@ -1,0 +1,69 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="aioredis" />
+          <option value="fastapi" />
+          <option value="httpx" />
+          <option value="mcp" />
+          <option value="numpy" />
+          <option value="openai" />
+          <option value="pandas" />
+          <option value="pydantic" />
+          <option value="shortuuid" />
+          <option value="tqdm" />
+          <option value="uvicorn" />
+          <option value="websockets" />
+          <option value="aiofiles" />
+          <option value="colorama" />
+          <option value="uv" />
+          <option value="elasticsearch" />
+          <option value="msgpack" />
+          <option value="aiohttp" />
+          <option value="aiohttp-sse-client" />
+          <option value="python-multipart" />
+          <option value="pillow" />
+          <option value="respx" />
+          <option value="aioresponses" />
+          <option value="bottle" />
+          <option value="math-verify" />
+          <option value="safetensors" />
+          <option value="sentencepiece" />
+          <option value="tokenizers" />
+          <option value="torch" />
+          <option value="tornado" />
+          <option value="transformers" />
+          <option value="vllm" />
+          <option value="deepspeed" />
+          <option value="anthropic" />
+          <option value="python-dotenv" />
+          <option value="pygame" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyPep8NamingInspection" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <option name="ignoredErrors">
+        <list>
+          <option value="N806" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyStubPackagesAdvertiser" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="pandas" />
+          <option value="scipy" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyUnresolvedReferencesInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredIdentifiers">
+        <list>
+          <option value="bisheng.services.deps.get_settings_service" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
