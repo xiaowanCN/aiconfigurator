@@ -98,6 +98,7 @@ def install_system_dependencies():
         "libtool",
         "libtool-bin",
         "pkg-config",
+        "liburing-dev", # <--- 显示安装，避免liburing.so.2报错
     ]
     run_command(["apt-get", "update"])
     run_command(["apt-get", "install", "-y"] + apt_packages)
