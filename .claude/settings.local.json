@@ -12,7 +12,8 @@
       "Bash(docker load:*)",
       "Bash(ls:*)",
       "Bash(find:*)",
-      "Bash(docker:*)"
+      "Bash(docker:*)",
+      "Bash(git ls-tree:*)"
     ]
   }
 }

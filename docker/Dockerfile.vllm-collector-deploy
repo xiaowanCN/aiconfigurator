@@ -1,0 +1,231 @@
+
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# ============================================================================
+# Combined Dockerfile: Collector + vLLM Deployment (with PD Split Support)
+# ============================================================================
+# This Dockerfile builds a single image supporting:
+#   1. Performance data collection (collector)
+#   2. vLLM model inference deployment (API Server)
+#   3. Disaggregated Serving (Prefill/Decode Split)
+#
+# Base: nvcr.io/nvidia/cuda-dl-base:25.01-cuda12.8-devel-ubuntu24.04
+# vLLM: v0.14.0
+# PD Dependencies: gdrcopy + ucx + nixl
+#
+# ============================================================================
+# Image Components:
+# ============================================================================
+# | Component        | Version/Source                                            |
+# |------------------|----------------------------------------------------------|
+# | Base Image       | nvcr.io/nvidia/cuda-dl-base:25.01-cuda12.8-devel-ubuntu24.04 |
+# | PyTorch          | Base image built-in                                       |
+# | vLLM             | v0.14.0                                                   |
+# | GDRCopy          | Latest (optional, for maximum PD performance)             |
+# | UCX              | v1.19.x (built from source)                               |
+# | NIXL             | Latest (built from source)                                |
+# | FastAPI/Uvicorn  | For API Server                                            |
+#
+# ============================================================================
+# Usage Mode 1: Performance Data Collection
+# ============================================================================
+#   # Build image
+#   docker build -f docker/Dockerfile.vllm-collector-deploy -t aic-vllm-all:v1 .
+#
+#   # Run collector for A800 SXM
+#   docker run -it --gpus all --ipc=host --network=host \
+#     aic-vllm-all:v1 python3 /workspace/collector/collect.py --backend vllm --gpu a800_sxm
+#
+#   # Run collector for B300 SXM
+#   docker run -it --gpus all --ipc=host --network=host \
+#     aic-vllm-all:v1 python3 /workspace/collector/collect.py --backend vllm --gpu b300_sxm
+#
+# ============================================================================
+# Usage Mode 2: Single Node vLLM API Server
+# ============================================================================
+#   # Start API Server
+#   docker run -d --gpus all --ipc=host --network=host \
+#     -p 8000:8000 \
+#     -v /path/to/models:/models \
+#     aic-vllm-all:v1 \
+#     python3 -m vllm.entrypoints.openai.api_server \
+#       --model /models/Qwen2.5-7B \
+#       --served-model-name Qwen2.5-7B \
+#       --host 0.0.0.0 --port 8000
+#
+#   # Test API
+#   curl http://localhost:8000/v1/completions \
+#     -H "Content-Type: application/json" \
+#     -d '{"model": "Qwen2.5-7B", "prompt": "Hello", "max_tokens": 50}'
+#
+# ============================================================================
+# Usage Mode 3: PD Disaggregated Serving (Prefill/Decode Split)
+# ============================================================================
+#   PD Disaggregated Serving separates the prefill and decode phases into
+#   different instances, connected via NIXL for KV cache transfer.
+#
+#   # Step 1: Start Prefill instance
+#   docker run -d --gpus all --ipc=host --network=host \
+#     -p 8000:8000 \
+#     -v /path/to/models:/models \
+#     --name prefill \
+#     aic-vllm-all:v1 \
+#     python3 -m vllm.entrypoints.openai.api_server \
+#       --model /models/Qwen2.5-7B \
+#       --served-model-name Qwen2.5-7B \
+#       --host 0.0.0.0 --port 8000 \
+#       --kv-transfer-config '{"kv_connector":"NixlConnector","kv_role":"kv_both"}'
+#
+#   # Step 2: Start Decode instance
+#   docker run -d --gpus all --ipc=host --network=host \
+#     -p 8001:8001 \
+#     -v /path/to/models:/models \
+#     --name decode \
+#     aic-vllm-all:v1 \
+#     python3 -m vllm.entrypoints.openai.api_server \
+#       --model /models/Qwen2.5-7B \
+#       --served-model-name Qwen2.5-7B \
+#       --host 0.0.0.0 --port 8001 \
+#       --kv-transfer-config '{"kv_connector":"NixlConnector","kv_role":"kv_both"}'
+#
+# ============================================================================
+# Notes:
+# ============================================================================
+#   - Image size: ~12-15GB (includes GDRCopy + UCX + NIXL)
+#   - Build time: Longer due to UCX + NIXL compilation
+#   - Network: PD nodes require high-speed interconnect (NVLink/RDMA)
+#   - GPU: Requires --gpus all and --ipc=host
+#
+# ============================================================================
+
+# ============================================================================
+# Stage 1: Base with CUDA + PyTorch
+# ============================================================================
+FROM nvcr.io/nvidia/cuda-dl-base:25.01-cuda12.8-devel-ubuntu24.04 AS base
+
+WORKDIR /workspace
+
+# Replace with Aliyun mirror for faster downloads in China
+RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/ubuntu.sources && \
+    sed -i 's|http://security.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/ubuntu.sources
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        git \
+        curl \
+        wget \
+        pciutils \
+        && \
+    rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# Stage 2: Install GDRCopy (optional, for maximum PD performance)
+# ============================================================================
+FROM base AS gdrcopy
+
+# GDRCopy configuration
+ARG GDRCOPY_OS_VERSION=ubuntu24_04
+ARG CUDA_VERSION=12.8
+
+# Copy and run GDRCopy installer
+COPY docker/misc/install_gdrcopy.sh /tmp/install_gdrcopy.sh
+RUN chmod +x /tmp/install_gdrcopy.sh && \
+    /tmp/install_gdrcopy.sh "${GDRCOPY_OS_VERSION}" "${CUDA_VERSION}" "x64" && \
+    rm /tmp/install_gdrcopy.sh
+
+# ============================================================================
+# Stage 3: Install vLLM + API dependencies
+# ============================================================================
+FROM gdrcopy AS vllm-env
+
+# Install Python (base image may not have it in PATH)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 python3-pip python3-venv && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment and configure pip mirrors
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
+    /opt/venv/bin/pip config set global.trusted-host mirrors.aliyun.com && \
+    /opt/venv/bin/pip config set global.extra-index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+
+# Add venv to PATH
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install vLLM and deployment dependencies (merged for fewer layers)
+RUN pip install --no-cache-dir \
+    vllm==0.14.0 \
+    fastapi>=0.100.0 \
+    uvicorn[standard]>=0.23.0 \
+    pydantic>=2.0.0 \
+    prometheus-client \
+    ray[default] \
+    sentencepiece \
+    transformers \
+    accelerate
+
+# ============================================================================
+# Stage 4: Install UCX + NIXL (required for PD disaggregated serving)
+# ============================================================================
+FROM vllm-env AS nixl-env
+
+# Replace with Aliyun mirror (need to re-apply after FROM)
+RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/ubuntu.sources && \
+    sed -i 's|http://security.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/ubuntu.sources
+
+# Install build dependencies for UCX and NIXL
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        ninja-build \
+        autotools-dev \
+        automake \
+        meson \
+        libtool \
+        libtool-bin \
+        pkg-config \
+        patchelf \
+        python3-dev \
+        && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy and run NIXL installer (builds UCX + NIXL from source)
+COPY docker/misc/install_nixl_from_source_ubuntu.py /tmp/install_nixl_from_source_ubuntu.py
+RUN python3 /tmp/install_nixl_from_source_ubuntu.py && \
+    rm /tmp/install_nixl_from_source_ubuntu.py && \
+    rm -rf /tmp/ucx_source /tmp/nixl_source /tmp/wheels_cache
+
+# ============================================================================
+# Stage 5: Final image with collector + deployment + PD support
+# ============================================================================
+FROM nixl-env AS final
+
+# Install uv for Python package management (useful for collector)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy collector source code
+COPY collector/ /workspace/collector/
+
+# Copy system definitions
+COPY aic-core/src/aiconfigurator_core/systems/*.yaml /workspace/aic-core/src/aiconfigurator_core/systems/
+COPY aic-core/src/aiconfigurator_core/systems/data/ /workspace/aic-core/src/aiconfigurator_core/systems/data/
+
+# Set environment variables
+ENV COLLECTOR_LOG_DIR=/workspace/collector/logs
+ENV PYTHONUNBUFFERED=1
+# UCX library path for NIXL
+ENV LD_LIBRARY_PATH=/tmp/ucx_install/lib:/tmp/ucx_install/lib/ucx:${LD_LIBRARY_PATH}
+
+# Create directories for models and logs
+RUN mkdir -p /workspace/models /workspace/logs
+
+# Health check for API server
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+WORKDIR /workspace
+
+CMD ["/bin/bash"]
