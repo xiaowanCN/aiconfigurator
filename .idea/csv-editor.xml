@@ -17,6 +17,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\aic-core\src\aiconfigurator_core\systems\support_matrix\a800_sxm.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\aic-core\src\aiconfigurator_core\systems\support_matrix\b200_sxm.csv">
           <value>
             <Attribute>
