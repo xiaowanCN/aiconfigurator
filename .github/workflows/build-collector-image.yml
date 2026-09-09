@@ -11,10 +11,10 @@ on:
         description: 'Dockerfile to build'
         required: true
         default: 'docker/Dockerfile.vllm-collector-deploy'
-        type: choice:
-          options:
-            - docker/Dockerfile.vllm-collector-deploy
-            - docker/Dockerfile.collector
+        type: choice
+        options:
+          - docker/Dockerfile.vllm-collector-deploy
+          - docker/Dockerfile.collector
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}
@@ -28,13 +28,13 @@ jobs:
   build-and-push:
     name: Build and Push Image
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # UCX + NIXL build takes long
+    timeout-minutes: 120
     permissions:
       contents: read
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
           lfs: true
@@ -72,8 +72,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Build only the vllm target if using multi-stage Dockerfile
-          target: ${{ contains(inputs.dockerfile, 'collector') && 'collector-vllm' || '' }}
 
       - name: Image digest
         run: echo "Pushed image ${{ steps.meta.outputs.tags }}"
