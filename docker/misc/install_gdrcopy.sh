@@ -35,9 +35,11 @@ esac
 OS_VER_LOWER="$(tr '[:upper:]' '[:lower:]' <<<"$OS_VER")"
 GDRCOPY_PKG_VER="${GDRCOPY_VERSION:-2.5.1-1}"
 
-DEB_NAME="libgdrapi_2.5.1-1_${DEB_ARCH}.${OS_VER}.deb"
-BASE_URL="https://developer.download.nvidia.com/compute/redist/gdrcopy"
-URL="${BASE_URL}/CUDA%20${CUDA_VER}/${OS_VER_LOWER}/${URL_ARCH}/${DEB_NAME}"
+# Capitalize first letter of OS_VER for filename (e.g., ubuntu24_04 -> Ubuntu24_04)
+OS_VER_CAPITALIZED="$(echo ${OS_VER} | sed 's/^./\U&/')"
+DEB_NAME="libgdrapi_2.5.1-1_${DEB_ARCH}.${OS_VER_CAPITALIZED}.deb"
+BASE_URL="https://developer.nvidia.cn/w/compute/redist/gdrcopy"
+URL="${BASE_URL}/CUDA%20${CUDA_VER}/${OS_VER}/${URL_ARCH}/${DEB_NAME}"
 
 echo "Downloading: ${URL}"
 TMPDIR="$(mktemp -d)"
