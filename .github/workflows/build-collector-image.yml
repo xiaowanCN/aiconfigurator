@@ -10,9 +10,10 @@ on:
       dockerfile:
         description: 'Dockerfile to build'
         required: true
-        default: 'docker/Dockerfile.vllm-collector-deploy.ci'
+        default: 'docker/Dockerfile.vllm-collector-deploy.ci.nopd'
         type: choice
         options:
+          - docker/Dockerfile.vllm-collector-deploy.ci.nopd
           - docker/Dockerfile.vllm-collector-deploy.ci
           - docker/Dockerfile.vllm-collector-deploy
           - docker/Dockerfile.collector
