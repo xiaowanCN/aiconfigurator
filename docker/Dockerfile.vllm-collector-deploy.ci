@@ -92,6 +92,8 @@ RUN apt-get update && \
         pkg-config \
         patchelf \
         python3-dev \
+        liburing2 \
+        liburing-dev \
         && \
     rm -rf /var/lib/apt/lists/*
 
