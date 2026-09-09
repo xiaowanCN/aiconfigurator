@@ -1,0 +1,137 @@
+
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# ============================================================================
+# CI Version: Collector + vLLM Deployment (for GitHub Actions)
+# ============================================================================
+# This is the CI-optimized version that uses official PyPI and GitHub sources
+# instead of China mirrors, since GitHub Actions runners are outside China.
+#
+# Usage:
+#   docker build -f docker/Dockerfile.vllm-collector-deploy.ci -t aic-vllm-all:v1 .
+#
+# ============================================================================
+
+# ============================================================================
+# Stage 1: Base with CUDA + PyTorch
+# ============================================================================
+FROM nvcr.io/nvidia/cuda-dl-base:25.01-cuda12.8-devel-ubuntu24.04 AS base
+
+WORKDIR /workspace
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        git \
+        curl \
+        wget \
+        pciutils \
+        && \
+    rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# Stage 2: Install GDRCopy (optional, for maximum PD performance)
+# ============================================================================
+FROM base AS gdrcopy
+
+# GDRCopy configuration
+ARG GDRCOPY_OS_VERSION=ubuntu24_04
+ARG CUDA_VERSION=12.8
+
+# Copy and run GDRCopy installer
+COPY docker/misc/install_gdrcopy.sh /tmp/install_gdrcopy.sh
+RUN chmod +x /tmp/install_gdrcopy.sh && \
+    /tmp/install_gdrcopy.sh "${GDRCOPY_OS_VERSION}" "${CUDA_VERSION}" "x64" && \
+    rm /tmp/install_gdrcopy.sh
+
+# ============================================================================
+# Stage 3: Install vLLM + API dependencies
+# ============================================================================
+FROM gdrcopy AS vllm-env
+
+# Install Python
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 python3-pip python3-venv && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment (using default PyPI)
+RUN python3 -m venv /opt/venv
+
+# Add venv to PATH
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install vLLM and deployment dependencies
+RUN pip install --no-cache-dir \
+    vllm==0.14.0 \
+    fastapi>=0.100.0 \
+    uvicorn[standard]>=0.23.0 \
+    pydantic>=2.0.0 \
+    prometheus-client \
+    ray[default] \
+    sentencepiece \
+    transformers \
+    accelerate
+
+# ============================================================================
+# Stage 4: Install UCX + NIXL (required for PD disaggregated serving)
+# ============================================================================
+FROM vllm-env AS nixl-env
+
+# Install build dependencies for UCX and NIXL
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        ninja-build \
+        autotools-dev \
+        automake \
+        meson \
+        libtool \
+        libtool-bin \
+        pkg-config \
+        patchelf \
+        python3-dev \
+        && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set CI mode environment variable for installer script
+ENV CI_BUILD=1
+
+# Copy and run NIXL installer (builds UCX + NIXL from source)
+COPY docker/misc/install_nixl_from_source_ubuntu.py /tmp/install_nixl_from_source_ubuntu.py
+RUN python3 /tmp/install_nixl_from_source_ubuntu.py && \
+    rm /tmp/install_nixl_from_source_ubuntu.py && \
+    rm -rf /tmp/ucx_source /tmp/nixl_source /tmp/wheels_cache
+
+# ============================================================================
+# Stage 5: Final image with collector + deployment + PD support
+# ============================================================================
+FROM nixl-env AS final
+
+# Install uv for Python package management (useful for collector)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy collector source code
+COPY collector/ /workspace/collector/
+
+# Copy system definitions
+COPY aic-core/src/aiconfigurator_core/systems/*.yaml /workspace/aic-core/src/aiconfigurator_core/systems/
+COPY aic-core/src/aiconfigurator_core/systems/data/ /workspace/aic-core/src/aiconfigurator_core/systems/data/
+
+# Set environment variables
+ENV COLLECTOR_LOG_DIR=/workspace/collector/logs
+ENV PYTHONUNBUFFERED=1
+# UCX library path for NIXL
+ENV LD_LIBRARY_PATH=/tmp/ucx_install/lib:/tmp/ucx_install/lib/ucx:${LD_LIBRARY_PATH}
+
+# Create directories for models and logs
+RUN mkdir -p /workspace/models /workspace/logs
+
+# Health check for API server
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+WORKDIR /workspace
+
+CMD ["/bin/bash"]

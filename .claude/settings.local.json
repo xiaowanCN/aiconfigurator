@@ -13,7 +13,10 @@
       "Bash(ls:*)",
       "Bash(find:*)",
       "Bash(docker:*)",
-      "Bash(git ls-tree:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git merge:*)",
+      "Bash(git stash:*)"
     ]
   }
 }
