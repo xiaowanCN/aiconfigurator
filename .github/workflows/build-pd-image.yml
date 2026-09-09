@@ -22,7 +22,7 @@ concurrency:
 
 env:
   REGISTRY: quay.io
-  IMAGE_NAME: caigentle/aiconfigurator-pd
+  IMAGE_NAME: 18896723947/aiconfigurator-pd
 
 jobs:
   build-and-push:
