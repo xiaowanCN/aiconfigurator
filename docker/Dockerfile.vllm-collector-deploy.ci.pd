@@ -71,7 +71,8 @@ RUN pip install --no-cache-dir \
     ray[default] \
     sentencepiece \
     transformers \
-    accelerate
+    accelerate \
+    nixl
 
 # ============================================================================
 # Stage 4: Install UCX + NIXL (required for PD disaggregated serving)
@@ -102,9 +103,10 @@ ENV CI_BUILD=1
 
 # Copy and run NIXL installer (builds UCX + NIXL from source)
 COPY docker/misc/install_nixl_from_source_ubuntu.py /tmp/install_nixl_from_source_ubuntu.py
-RUN python3 /tmp/install_nixl_from_source_ubuntu.py && \
-    rm /tmp/install_nixl_from_source_ubuntu.py && \
-    rm -rf /tmp/ucx_source /tmp/nixl_source /tmp/wheels_cache
+# non-cuda 用
+# RUN python3 /tmp/install_nixl_from_source_ubuntu.py && \
+#    rm /tmp/install_nixl_from_source_ubuntu.py && \
+#    rm -rf /tmp/ucx_source /tmp/nixl_source /tmp/wheels_cache
 
 # ============================================================================
 # Stage 5: Final image with collector + deployment + PD support

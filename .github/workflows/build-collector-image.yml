@@ -14,7 +14,7 @@ on:
         type: choice
         options:
           - docker/Dockerfile.vllm-collector-deploy.ci.nopd
-          - docker/Dockerfile.vllm-collector-deploy.ci
+          - docker/Dockerfile.vllm-collector-deploy.ci.pd
           - docker/Dockerfile.vllm-collector-deploy
           - docker/Dockerfile.collector
 
